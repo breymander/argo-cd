@@ -966,6 +966,7 @@ func (s *Service) getManifestCacheEntry(cacheKey string, q *apiclient.ManifestRe
 }
 
 func getHelmRepos(appPath string, repositories []*v1alpha1.Repository, helmRepoCreds []*v1alpha1.RepoCreds) ([]helm.HelmRepository, error) {
+	log.Infof("getHelmRepos - appPath: %s repositories: %s helmRepoCreds: %s", appPath, repositories, helmRepoCreds)
 	dependencies, err := getHelmDependencyRepos(appPath)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving helm dependency repos: %w", err)
@@ -974,8 +975,10 @@ func getHelmRepos(appPath string, repositories []*v1alpha1.Repository, helmRepoC
 	reposByUrl := make(map[string]*v1alpha1.Repository)
 	for _, repo := range repositories {
 		reposByUrl[repo.Repo] = repo
+		log.Infof("Lookup repoByUrl: %s", repo)
 		if repo.Name != "" {
 			reposByName[repo.Name] = repo
+			log.Infof("Lookup repoByName: %s", repo)
 		}
 	}
 
@@ -983,13 +986,17 @@ func getHelmRepos(appPath string, repositories []*v1alpha1.Repository, helmRepoC
 	for _, dep := range dependencies {
 		// find matching repo credentials by URL or name
 		repo, ok := reposByUrl[dep.Repo]
+		log.Infof("Lookup Dependency repoByUrl: %s, OK: %s", repo, ok)
 		if !ok && dep.Name != "" {
 			repo, ok = reposByName[dep.Name]
+			log.Infof("Lookup Dependency repoByName: %s, OK: %s", repo, ok)
 		}
 		if !ok {
+			log.Infof("No matching dependency repo found for repo: %s, OK: %s", repo, ok)
 			// if no matching repo credentials found, use the repo creds from the credential list
 			repo = &v1alpha1.Repository{Repo: dep.Repo, Name: dep.Name, EnableOCI: dep.EnableOCI}
 			if repositoryCredential := getRepoCredential(helmRepoCreds, dep.Repo); repositoryCredential != nil {
+				log.Infof("repositoryCredential != nil")
 				repo.EnableOCI = repositoryCredential.EnableOCI
 				repo.Password = repositoryCredential.Password
 				repo.Username = repositoryCredential.Username
@@ -997,12 +1004,14 @@ func getHelmRepos(appPath string, repositories []*v1alpha1.Repository, helmRepoC
 				repo.TLSClientCertData = repositoryCredential.TLSClientCertData
 				repo.TLSClientCertKey = repositoryCredential.TLSClientCertKey
 			} else if repo.EnableOCI {
+				log.Infof("EnableOCI is true")
 				// finally if repo is OCI and no credentials found, use the first OCI credential matching by hostname
 				// see https://github.com/argoproj/argo-cd/issues/14636
 				for _, cred := range repositories {
 					if depURL, err := url.Parse("oci://" + dep.Repo); err == nil && cred.EnableOCI && depURL.Host == cred.Repo {
 						repo.Username = cred.Username
 						repo.Password = cred.Password
+						log.Infof("Repo user and password set.  Repo: %s", cred.Username)
 						break
 					}
 				}
@@ -1034,7 +1043,9 @@ func getHelmDependencyRepos(appPath string) ([]*v1alpha1.Repository, error) {
 	}
 
 	for _, r := range d.Dependencies {
+		log.Infof("checking dependencies for repo: %s", r.Repository)
 		if strings.HasPrefix(r.Repository, "@") {
+			log.Infof("repo %s has @ prefix", r.Repository)
 			repos = append(repos, &v1alpha1.Repository{
 				Name: r.Repository[1:],
 			})
@@ -1043,12 +1054,14 @@ func getHelmDependencyRepos(appPath string) ([]*v1alpha1.Repository, error) {
 				Name: strings.TrimPrefix(r.Repository, "alias:"),
 			})
 		} else if u, err := url.Parse(r.Repository); err == nil && (u.Scheme == "https" || u.Scheme == "oci") {
+			log.Infof("%s did not error, and scheme equaled https or oci.  scheme is %s", r.Repository, u.Scheme)
 			repo := &v1alpha1.Repository{
 				// trimming oci:// prefix since it is currently not supported by Argo CD (OCI repos just have no scheme)
 				Repo:      strings.TrimPrefix(r.Repository, "oci://"),
 				Name:      sanitizeRepoName(r.Repository),
 				EnableOCI: u.Scheme == "oci",
 			}
+			log.Infof("Set repo object values to: Repo: %s Name: %s EnableOCI: %s", repo.Repo, repo.Name, repo.EnableOCI)
 			repos = append(repos, repo)
 		}
 	}
