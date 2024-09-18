@@ -236,7 +236,7 @@ codegen: test-tools-image
 
 .PHONY: cli
 cli: test-tools-image
-	$(call run-in-test-client, GOOS=${HOST_OS} GOARCH=${HOST_ARCH} make cli-local)
+	$(call run-in-test-client, GOOS=${HOST_OS} GOARCH=${HOST_ARCH} git config --global --add safe.directory /go/src/github.com/argoproj/argo-cd && make cli-local)
 
 .PHONY: cli-local
 cli-local: clean-debug
